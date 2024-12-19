@@ -7,7 +7,7 @@ before_install:
   - sudo apt-get install -y gcc
 
 install:
-
+  - pip install python-telegram-bot
   - python3 -m pip install --upgrade pip
   - pip install aiohttp telebot pymongo pytz psutil
 
