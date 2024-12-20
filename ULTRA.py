@@ -6,7 +6,8 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, CallbackContext
 from telegram.error import TelegramError
 
-TELEGRAM_BOT_TOKEN = '7908747158:AAHWDbkW2NcLjZydln1-LARsOtfA45_U_fM'
+# Replace with your new bot token from BotFather
+TELEGRAM_BOT_TOKEN = '7731060432:AAGtVafUR_ZhxevLzYo77QKuSgmWgbMYgzA'
 ALLOWED_USER_ID = 6135948216  # Admin user ID
 bot_access_free = True  
 
