@@ -13,7 +13,7 @@ bot_access_free = True
 
 # In-memory storage for the generated key, redemption status, and user interactions
 generated_key = None
-key_redeemed = False
+key_redeemed = true
 redeem_time = None  # Timestamp of key redemption
 user_ids = set()  # Set to store unique user IDs who interacted with the bot
 
@@ -143,9 +143,9 @@ async def status(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id  # Get the ID of the user requesting the status
 
-    # Check if the user is authorized to view the status
-  #  if user_id != ALLOWED_USER_ID:
-      #  await context.bot.send_message(chat_id=chat_id, text="*❌ You are not authorized to use this command!*", parse_mode='Markdown')
+     Check if the user is authorized to view the status
+    if user_id != ALLOWED_USER_ID:
+        await context.bot.send_message(chat_id=chat_id, text="*❌ You are not authorized to use this command!*", parse_mode='Markdown')
         return
 
     # Show current status of key and redemption
