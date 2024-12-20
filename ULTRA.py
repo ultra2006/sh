@@ -6,7 +6,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackContext, CallbackQueryHandler
 from telegram.error import TelegramError
 
-# Replace with your new bot token from BotFather
+# Replace with your bot token from BotFather
 TELEGRAM_BOT_TOKEN = '7718765612:AAEsrz7uXxsq_aDoPjncPdOD73z3WLOEVz0'
 ALLOWED_USER_ID = 6135948216  # Admin user ID
 bot_access_free = True  
@@ -16,6 +16,9 @@ generated_key = None
 key_redeemed = true
 redeem_time = None  # Timestamp of key redemption
 user_ids = set()  # Set to store unique user IDs who interacted with the bot
+approved_users = set()  # Set of users who have been approved
+
+# Handlers for commands
 
 async def start(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
@@ -139,89 +142,129 @@ async def redeem(update: Update, context: CallbackContext):
 
     await context.bot.send_message(chat_id=chat_id, text=f"*🔑 Key redeemed successfully!* Your key: {generated_key}", parse_mode='Markdown')
 
+# The 'status' function you requested
 async def status(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id  # Get the ID of the user requesting the status
 
-     Check if the user is authorized to view the status
+    # Check if the user is authorized to view the status
     if user_id != ALLOWED_USER_ID:
-        await context.bot.send_message(chat_id=chat_id, text="*❌ You are not authorized to use this command!*", parse_mode='Markdown')
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="*❌ You are not authorized to use this command!*",
+            parse_mode='Markdown'
+        )
         return
 
     # Show current status of key and redemption
     if not generated_key:
-        await context.bot.send_message(chat_id=chat_id, text="*⚠️ No key has been generated yet!*", parse_mode='Markdown')
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="*⚠️ No key has been generated yet!*",
+            parse_mode='Markdown'
+        )
     else:
         redemption_status = "Redeemed" if key_redeemed else "Not redeemed"
         redeem_time_msg = (
-            f"\n*⌛ Redeemed at: {time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(redeem_time))}*" 
+            f"\n*⌛ Redeemed at: {time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(redeem_time))}*"
             if key_redeemed else ""
         )
         await context.bot.send_message(
             chat_id=chat_id,
-            text=(f"*🔑 Current Key: {generated_key}*\n"
-                  f"*Status: {redemption_status}*"
-                  f"{redeem_time_msg}"),
+            text=(
+                f"*🔑 Current Key: {generated_key}*\n"
+                f"*Status: {redemption_status}*"
+                f"{redeem_time_msg}"
+            ),
             parse_mode='Markdown'
         )
 
-async def stop(update: Update, context: CallbackContext):
+# Admin commands for approving or disapproving users
+async def approve(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
-    user_id = update.effective_user.id  # Get the ID of the user requesting the stop command
-
-    # Only allow the admin to stop the bot
-    if user_id != ALLOWED_USER_ID:
-        await context.bot.send_message(chat_id=chat_id, text="*❌ You are not authorized to use this command!*", parse_mode='Markdown')
-        return
-
-    await context.bot.send_message(chat_id=chat_id, text="*🛑 Bot is stopping...*")
-    # You can stop the bot by calling shutdown or using Application.stop()
-    await context.application.stop()
-
-async def broadcast(update: Update, context: CallbackContext):
-    chat_id = update.effective_chat.id
-    user_id = update.effective_user.id  # Get the ID of the user sending the broadcast command
+    user_id = update.effective_user.id  # Get the ID of the user issuing the command
 
     # Check if the user is the admin
     if user_id != ALLOWED_USER_ID:
         await context.bot.send_message(chat_id=chat_id, text="*❌ You are not authorized to use this command!*", parse_mode='Markdown')
         return
 
-    # Make sure the message is provided
     if not context.args:
-        await context.bot.send_message(chat_id=chat_id, text="*⚠️ You need to specify a message to broadcast!*", parse_mode='Markdown')
+        await context.bot.send_message(chat_id=chat_id, text="*⚠️ You must specify a user ID to approve!*", parse_mode='Markdown')
         return
 
-    # Get the broadcast message
-    message = " ".join(context.args)
+    target_user_id = context.args[0]
 
-    # Send the message to all users
+    if target_user_id not in user_ids:
+        await context.bot.send_message(chat_id=chat_id, text=f"*⚠️ User ID {target_user_id} not found!*", parse_mode='Markdown')
+        return
+
+    approved_users.add(target_user_id)
+    await context.bot.send_message(chat_id=chat_id, text=f"*✅ User ID {target_user_id} approved!*", parse_mode='Markdown')
+
+async def disapprove(update: Update, context: CallbackContext):
+    chat_id = update.effective_chat.id
+    user_id = update.effective_user.id  # Get the ID of the user issuing the command
+
+    # Check if the user is the admin
+    if user_id != ALLOWED_USER_ID:
+        await context.bot.send_message(chat_id=chat_id, text="*❌ You are not authorized to use this command!*", parse_mode='Markdown')
+        return
+
+    if not context.args:
+        await context.bot.send_message(chat_id=chat_id, text="*⚠️ You must specify a user ID to disapprove!*", parse_mode='Markdown')
+        return
+
+    target_user_id = context.args[0]
+
+    if target_user_id not in user_ids:
+        await context.bot.send_message(chat_id=chat_id, text=f"*⚠️ User ID {target_user_id} not found!*", parse_mode='Markdown')
+        return
+
+    if target_user_id in approved_users:
+        approved_users.remove(target_user_id)
+        await context.bot.send_message(chat_id=chat_id, text=f"*❌ User ID {target_user_id} disapproved!*", parse_mode='Markdown')
+    else:
+        await context.bot.send_message(chat_id=chat_id, text=f"*⚠️ User ID {target_user_id} is not approved!*", parse_mode='Markdown')
+
+# Admin command for broadcasting a message
+async def broadcast(update: Update, context: CallbackContext):
+    chat_id = update.effective_chat.id
+    user_id = update.effective_user.id  # Get the ID of the user issuing the command
+
+    # Check if the user is the admin
+    if user_id != ALLOWED_USER_ID:
+        await context.bot.send_message(chat_id=chat_id, text="*❌ You are not authorized to use this command!*", parse_mode='Markdown')
+        return
+
+    if not context.args:
+        await context.bot.send_message(chat_id=chat_id, text="*⚠️ You must provide a message to broadcast!*", parse_mode='Markdown')
+        return
+
+    broadcast_message = ' '.join(context.args)  # Join all arguments to form the message
+
     for user_id in user_ids:
         try:
-            await context.bot.send_message(user_id, message, parse_mode='Markdown')
+            await context.bot.send_message(user_id, broadcast_message)
         except TelegramError as e:
-            print(f"Failed to send message to {user_id}: {e}")
+            print(f"Failed to send broadcast to {user_id}: {e}")
 
-    await context.bot.send_message(chat_id=chat_id, text=f"*✅ Broadcast sent to {len(user_ids)} users!*", parse_mode='Markdown')
+    await context.bot.send_message(chat_id=chat_id, text="*📢 Broadcast message sent to all users!*", parse_mode='Markdown')
 
 def main():
     """Start the bot and set up the handlers."""
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
-    # Command handlers
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("attack", attack))
-    application.add_handler(CommandHandler("genkey", genkey))
-    application.add_handler(CommandHandler("redeem", redeem))
-    application.add_handler(CommandHandler("status", status))
-    application.add_handler(CommandHandler("stop", stop))
-    application.add_handler(CommandHandler("broadcast", broadcast))
+    application.add_handler(CommandHandler('start', start))
+    application.add_handler(CommandHandler('attack', attack))
+    application.add_handler(CommandHandler('genkey', genkey))
+    application.add_handler(CommandHandler('redeem', redeem))
+    application.add_handler(CommandHandler('status', status))
+    application.add_handler(CommandHandler('approve', approve))
+    application.add_handler(CommandHandler('disapprove', disapprove))
+    application.add_handler(CommandHandler('broadcast', broadcast))  # Add broadcast command
 
-    # Button callback handler
-    application.add_handler(CallbackQueryHandler(handle_button))
-
-    # Start the bot
     application.run_polling()
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
