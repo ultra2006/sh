@@ -144,8 +144,8 @@ async def status(update: Update, context: CallbackContext):
     user_id = update.effective_user.id  # Get the ID of the user requesting the status
 
     # Check if the user is authorized to view the status
-    if user_id != ALLOWED_USER_ID:
-        await context.bot.send_message(chat_id=chat_id, text="*❌ You are not authorized to use this command!*", parse_mode='Markdown')
+  #  if user_id != ALLOWED_USER_ID:
+      #  await context.bot.send_message(chat_id=chat_id, text="*❌ You are not authorized to use this command!*", parse_mode='Markdown')
         return
 
     # Show current status of key and redemption
