@@ -7,7 +7,7 @@ from telegram.ext import Application, CommandHandler, CallbackContext
 from telegram.error import TelegramError
 
 # Replace with your new bot token from BotFather
-TELEGRAM_BOT_TOKEN = 'NEW_TOKEN_HERE'
+TELEGRAM_BOT_TOKEN = 'NEW_TOKEN_HERE'  # Replace 'NEW_TOKEN_HERE' with your actual bot token
 ALLOWED_USER_ID = 6135948216  # Admin user ID
 bot_access_free = True  
 
@@ -189,9 +189,4 @@ def main():
     application.add_handler(CommandHandler("attack", attack))
     application.add_handler(CommandHandler("genkey", genkey))
     application.add_handler(CommandHandler("redeem", redeem))
-    application.add_handler(CommandHandler("redeem_time", redeem_time))
-
-    application.run_polling()
-
-if __name__ == '__main__':
-    main()
+    application.add_handler
