@@ -7,7 +7,7 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, CallbackContext
 from telegram.error import TelegramError
 
-TELEGRAM_BOT_TOKEN = '7763302446:AAEu2Ui11xIiFkP3hbLEmT0y64J5XGJVvGw'
+TELEGRAM_BOT_TOKEN = '7248127599:AAHwkME4J8unx-hS7dfiXTwgLfM2VsLfjAY'
 ALLOWED_USER_ID = 6135948216
 bot_access_free = True  
 
@@ -26,7 +26,7 @@ async def start(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
     message = (
         "*🔥 Welcome to the battlefield! 🔥*\n\n"
-        "*Use /attack <ip> <port> <duration>*\n"
+        "*Use /attack <ip> <port> <duration> <key>*\n"
         "*Let the war begin! ⚔️💥*"
     )
     await context.bot.send_message(chat_id=chat_id, text=message, parse_mode='Markdown')
@@ -61,18 +61,17 @@ async def attack(update: Update, context: CallbackContext):
         return
 
     args = context.args
-    if len(args) != 3:
-        await context.bot.send_message(chat_id=chat_id, text="*⚠️ Usage: /attack <ip> <port> <duration>*", parse_mode='Markdown')
+    if len(args) != 4:
+        await context.bot.send_message(chat_id=chat_id, text="*⚠️ Usage: /attack <ip> <port> <duration> <key>*", parse_mode='Markdown')
         return
 
-    ip, port, duration = args
+    ip, port, duration, key = args
 
     # Check if user has a valid key
     if chat_id not in user_keys or user_keys[chat_id]['expiry'] < time.time():
         await context.bot.send_message(chat_id=chat_id, text="*❌ You don't have a valid key! Please generate a new one with /genkey.*", parse_mode='Markdown')
         return
 
-    key = context.args[0]
     if key != user_keys[chat_id]['key']:
         await context.bot.send_message(chat_id=chat_id, text="*❌ Invalid key. Please try again.*", parse_mode='Markdown')
         return
