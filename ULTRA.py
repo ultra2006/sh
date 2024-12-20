@@ -7,7 +7,7 @@ from telegram.ext import Application, CommandHandler, CallbackContext
 from telegram.error import TelegramError
 
 # Replace with your new bot token from BotFather
-TELEGRAM_BOT_TOKEN = 'NEW_TOKEN_HERE'
+TELEGRAM_BOT_TOKEN = '7092345328:AAFph1hrE8sWnhUiIRdJ_uiOs_V_ojL5vDA'
 ALLOWED_USER_ID = 6135948216  # Admin user ID
 
 # In-memory storage for the generated key, redemption status, and expiration time
