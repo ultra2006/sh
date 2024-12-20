@@ -7,6 +7,9 @@ before_install:
   - sudo apt-get install -y gcc
 
 install:
+  -pip install python-dotenv
+  -pip show python-telegram-bot
+  -pip install --upgrade python-telegram-bot
   - pip install python-telegram-bot
   - python3 -m pip install --upgrade pip
   - pip install aiohttp telebot pymongo pytz psutil
