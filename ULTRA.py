@@ -2,8 +2,8 @@ import os
 import asyncio
 import secrets  # For generating secure random keys
 import time  # For tracking redemption time
-from telegram import Update
-from telegram.ext import Application, CommandHandler, CallbackContext
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, CallbackContext, CallbackQueryHandler
 from telegram.error import TelegramError
 
 # Replace with your new bot token from BotFather
@@ -11,19 +11,46 @@ TELEGRAM_BOT_TOKEN = '7718765612:AAEsrz7uXxsq_aDoPjncPdOD73z3WLOEVz0'
 ALLOWED_USER_ID = 6135948216  # Admin user ID
 bot_access_free = True  
 
-# In-memory storage for the generated key and redemption status
+# In-memory storage for the generated key, redemption status, and user interactions
 generated_key = None
 key_redeemed = False
 redeem_time = None  # Timestamp of key redemption
+user_ids = set()  # Set to store unique user IDs who interacted with the bot
 
 async def start(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
+    user_id = update.effective_user.id  # Get the ID of the user interacting with the bot
+
+    # Track the user ID
+    user_ids.add(user_id)
+
+    # Create inline keyboard with buttons
+    keyboard = [
+        [InlineKeyboardButton("Launch Attack", callback_data='launch_attack')],
+        [InlineKeyboardButton("Check Status", callback_data='check_status')],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
     message = (
         "*🔥 Welcome to the battlefield! 🔥*\n\n"
-        "*Use /attack <ip> <port> <duration>*\n"
-        "*Let the war begin! ⚔️💥*"
+        "*Use the buttons below to proceed!*\n"
     )
-    await context.bot.send_message(chat_id=chat_id, text=message, parse_mode='Markdown')
+    await context.bot.send_message(chat_id=chat_id, text=message, parse_mode='Markdown', reply_markup=reply_markup)
+
+async def handle_button(update: Update, context: CallbackContext):
+    query = update.callback_query
+    await query.answer()
+
+    # Handle different button presses based on callback_data
+    if query.data == 'launch_attack':
+        # Ask for the target IP, port, and duration
+        await query.edit_message_text(
+            text="*⚔️ Enter the details for the attack:*\n*Format: /attack <ip> <port> <duration>*",
+            parse_mode='Markdown'
+        )
+    elif query.data == 'check_status':
+        # Show the status of the key and redemption
+        await status(update, context)
 
 async def run_attack(chat_id, ip, port, duration, context):
     try:
@@ -132,11 +159,9 @@ async def status(update: Update, context: CallbackContext):
         )
         await context.bot.send_message(
             chat_id=chat_id,
-            text=(
-                f"*🔑 Current Key: {generated_key}*\n"
-                f"*Status: {redemption_status}*"
-                f"{redeem_time_msg}"
-            ),
+            text=(f"*🔑 Current Key: {generated_key}*\n"
+                  f"*Status: {redemption_status}*"
+                  f"{redeem_time_msg}"),
             parse_mode='Markdown'
         )
 
@@ -153,6 +178,32 @@ async def stop(update: Update, context: CallbackContext):
     # You can stop the bot by calling shutdown or using Application.stop()
     await context.application.stop()
 
+async def broadcast(update: Update, context: CallbackContext):
+    chat_id = update.effective_chat.id
+    user_id = update.effective_user.id  # Get the ID of the user sending the broadcast command
+
+    # Check if the user is the admin
+    if user_id != ALLOWED_USER_ID:
+        await context.bot.send_message(chat_id=chat_id, text="*❌ You are not authorized to use this command!*", parse_mode='Markdown')
+        return
+
+    # Make sure the message is provided
+    if not context.args:
+        await context.bot.send_message(chat_id=chat_id, text="*⚠️ You need to specify a message to broadcast!*", parse_mode='Markdown')
+        return
+
+    # Get the broadcast message
+    message = " ".join(context.args)
+
+    # Send the message to all users
+    for user_id in user_ids:
+        try:
+            await context.bot.send_message(user_id, message, parse_mode='Markdown')
+        except TelegramError as e:
+            print(f"Failed to send message to {user_id}: {e}")
+
+    await context.bot.send_message(chat_id=chat_id, text=f"*✅ Broadcast sent to {len(user_ids)} users!*", parse_mode='Markdown')
+
 def main():
     """Start the bot and set up the handlers."""
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
@@ -164,6 +215,10 @@ def main():
     application.add_handler(CommandHandler("redeem", redeem))
     application.add_handler(CommandHandler("status", status))
     application.add_handler(CommandHandler("stop", stop))
+    application.add_handler(CommandHandler("broadcast", broadcast))
+
+    # Button callback handler
+    application.add_handler(CallbackQueryHandler(handle_button))
 
     # Start the bot
     application.run_polling()
