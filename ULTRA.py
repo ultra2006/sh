@@ -7,14 +7,32 @@ from telegram.ext import Application, CommandHandler, CallbackContext
 from telegram.error import TelegramError
 
 # Replace with your new bot token from BotFather
-TELEGRAM_BOT_TOKEN = '7731060432:AAGtVafUR_ZhxevLzYo77QKuSgmWgbMYgzA'
+TELEGRAM_BOT_TOKEN = 'NEW_TOKEN_HERE'
 ALLOWED_USER_ID = 6135948216  # Admin user ID
 bot_access_free = True  
 
-# In-memory storage for the generated key and redemption status
+# In-memory storage for the generated key, redemption status, and expiry time
 generated_key = None
 key_redeemed = False
 redeem_time = None  # Timestamp of key redemption
+key_expiry_time = None  # Expiry time of the key (timestamp)
+
+# Function to convert time to seconds
+def convert_to_seconds(duration: str):
+    try:
+        if 'd' in duration:
+            days = int(duration.replace('d', '').strip())
+            return days * 24 * 60 * 60  # Convert days to seconds
+        elif 'h' in duration:
+            hours = int(duration.replace('h', '').strip())
+            return hours * 60 * 60  # Convert hours to seconds
+        elif 'm' in duration:
+            minutes = int(duration.replace('m', '').strip())
+            return minutes * 60  # Convert minutes to seconds
+        else:
+            return None
+    except ValueError:
+        return None
 
 async def start(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
@@ -70,7 +88,7 @@ async def attack(update: Update, context: CallbackContext):
     asyncio.create_task(run_attack(chat_id, ip, port, duration, context))
 
 async def genkey(update: Update, context: CallbackContext):
-    global generated_key  # Reference the global generated_key variable
+    global generated_key, key_expiry_time  # Reference the global variables
 
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id  # Get the ID of the user issuing the command
@@ -80,19 +98,35 @@ async def genkey(update: Update, context: CallbackContext):
         await context.bot.send_message(chat_id=chat_id, text="*❌ You are not authorized to use this command!*", parse_mode='Markdown')
         return
 
+    # Get duration parameter for the key expiry time
+    args = context.args
+    if len(args) < 1:
+        await context.bot.send_message(chat_id=chat_id, text="*⚠️ Usage: /genkey <duration> (e.g., 1d, 2h, 30m)*", parse_mode='Markdown')
+        return
+
+    duration = args[0]
+    expiry_in_seconds = convert_to_seconds(duration)
+
+    if not expiry_in_seconds:
+        await context.bot.send_message(chat_id=chat_id, text="*⚠️ Invalid duration format! Please use days (d), hours (h), or minutes (m).*", parse_mode='Markdown')
+        return
+
     # Generate a secure random key
     generated_key = secrets.token_urlsafe(16)  # Generates a 16-byte secure token (alphanumeric)
     
+    # Set the expiry time
+    key_expiry_time = time.time() + expiry_in_seconds
+
     # Reset redemption status and time
     global key_redeemed, redeem_time
     key_redeemed = False
     redeem_time = None  # Reset the redemption time
 
     # Send the generated key to the admin
-    await context.bot.send_message(chat_id=chat_id, text=f"*🔑 Your generated key: {generated_key}*", parse_mode='Markdown')
+    await context.bot.send_message(chat_id=chat_id, text=f"*🔑 Your generated key: {generated_key}*\n*🕒 Expires in {duration}*", parse_mode='Markdown')
 
 async def redeem(update: Update, context: CallbackContext):
-    global generated_key, key_redeemed, redeem_time  # Reference the global variables
+    global generated_key, key_redeemed, redeem_time, key_expiry_time  # Reference the global variables
 
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id  # Get the ID of the user redeeming the key
@@ -104,6 +138,11 @@ async def redeem(update: Update, context: CallbackContext):
 
     if key_redeemed:
         await context.bot.send_message(chat_id=chat_id, text="*⚠️ The key has already been redeemed!*", parse_mode='Markdown')
+        return
+
+    # Check if the key is expired
+    if key_expiry_time and time.time() > key_expiry_time:
+        await context.bot.send_message(chat_id=chat_id, text="*⚠️ The key has expired!*", parse_mode='Markdown')
         return
 
     # Redeem the key
@@ -123,7 +162,7 @@ async def redeem(update: Update, context: CallbackContext):
         await context.bot.send_message(chat_id=chat_id, text="*❌ Invalid key!* Please check your key and try again.", parse_mode='Markdown')
 
 async def redeem_time(update: Update, context: CallbackContext):
-    global redeem_time  # Reference the global redeem_time variable
+    global redeem_time, key_expiry_time  # Reference the global redeem_time variable
 
     chat_id = update.effective_chat.id
 
@@ -136,6 +175,11 @@ async def redeem_time(update: Update, context: CallbackContext):
     time_elapsed = time.time() - redeem_time
     minutes = int(time_elapsed // 60)
     seconds = int(time_elapsed % 60)
+
+    # Check if the key is expired
+    if key_expiry_time and time.time() > key_expiry_time:
+        await context.bot.send_message(chat_id=chat_id, text="*⚠️ The key has expired!*", parse_mode='Markdown')
+        return
 
     await context.bot.send_message(chat_id=chat_id, text=f"*⌛ The key was redeemed {minutes} minute(s) and {seconds} second(s) ago.*", parse_mode='Markdown')
 
