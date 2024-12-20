@@ -13,7 +13,7 @@ bot_access_free = True
 
 # In-memory storage for the generated key, redemption status, and user interactions
 generated_key = None
-key_redeemed = true
+key_redeemed = True
 redeem_time = None  # Timestamp of key redemption
 user_ids = set()  # Set to store unique user IDs who interacted with the bot
 approved_users = set()  # Set of users who have been approved
