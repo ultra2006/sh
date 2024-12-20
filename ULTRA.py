@@ -7,7 +7,7 @@ from telegram.ext import Application, CommandHandler, CallbackContext
 from telegram.error import TelegramError
 
 # Use environment variable to securely store the bot token
-TELEGRAM_BOT_TOKEN = os.getenv('7831102909:AAG3y0-k3qzoIX4SJCGtbHkDiDNJXuT3zdk')  # Make sure to set this environment variable
+TELEGRAM_BOT_TOKEN = os.getenv('7806814172:AAH2xJYOu9SPNh53xjt2rZM1uklRSujnpBs')  # Make sure to set this environment variable
 
 # Store the keys (in a dictionary for simplicity)
 generated_keys = {}
